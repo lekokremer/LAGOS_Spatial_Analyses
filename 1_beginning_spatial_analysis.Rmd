@@ -27,60 +27,52 @@ library(USAboundaries) #USA states and counties
 ### First download and then specifically grab the locus (or site lat longs)
 
 ```{r data-read}
-# #Lagos download script
-LAGOSNE::lagosne_get(dest_folder = LAGOSNE:::lagos_path())
+lagosne_get(dest_folder= LAGOSNE::lagos_path())
 
+#once downloaded, need load into R
+lagos <- lagosne_load() #leaving defaults can be best for newest data
 
-#Load in lagos
-lagos <- lagosne_load()
-
-#Grab the lake centroid info
-lake_centers <- lagos$locus
-
-
-
+names(lagos)
 ```
 
+We are going to pull in lake centroids
+
+```{r}
+lake_centers <- lagos$locus
+names(lake_centers)
+```
 
 
 ### Convert to spatial data
+# st_as_sf converts df to spatial
+# (lats are x, long y) and need projection
+
 ```{r}
-#Look at the column names
-#names(lake_centers)
+spatial_lakes <- st_as_sf(lake_centers, coords = 
+                            c('nhd_long', 'nhd_lat'), crs = 4326) %>% # here we are telling r the current projection 
+  st_transform(2163) # and here is the desired projection
 
-#Look at the structure
-#str(lake_centers)
+subset_spatial <- spatial_lakes %>% 
+  slice(1:100)
 
-#View the full dataset
-#View(lake_centers %>% slice(1:100))
-
-spatial_lakes <- st_as_sf(lake_centers,coords=c('nhd_long','nhd_lat'),
-                          crs=4326) %>%
-  st_transform(2163)
-
-#Subset for plotting
-subset_spatial <- spatial_lakes %>%
-  slice(1:100) 
-
-subset_baser <- spatial_lakes[1:100,]
-
-#Dynamic mapviewer
 mapview(subset_spatial)
-
 ```
-
 
 ### Subset to only Minnesota
 
 ```{r}
-states <- us_states()
+states <- us_states() #from USAbounaries
 
-#Plot all the states to check if they loaded
-#mapview(states)
 minnesota <- states %>%
   filter(name == 'Minnesota') %>%
   st_transform(2163)
 
+mapview(minnesota)
+```
+
+### Subset to only Minnesota
+
+```{r}
 #Subset lakes based on spatial position
 minnesota_lakes <- spatial_lakes[minnesota,]
 
@@ -91,8 +83,6 @@ minnesota_lakes %>%
   mapview(.,zcol = 'lake_area_ha')
 ```
 
-
-
 # In-Class work
 
 
@@ -100,8 +90,11 @@ minnesota_lakes %>%
 
 ```{r}
 
+the_ayes <- states %>%
+  filter(state_name == c('Iowa', 'Illinois')) %>%
+  st_transform(2163)
 
-
+mapview(the_ayes)
 ```
 
 
