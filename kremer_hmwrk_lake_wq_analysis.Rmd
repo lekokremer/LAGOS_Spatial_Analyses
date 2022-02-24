@@ -31,7 +31,8 @@ neededPackages <- c('tidyverse',  'mapview', 'LAGOSNE', 'USAboundaries', 'lubrid
 
 for (package in neededPackages){pkgTest(package)}
 
-library(sf)
+library(sf) 
+mapviewOptions(fgb = FALSE)
 # sf Spatial package that can read and create shapefiles 
 # mapview Interactive maps
 # LAGOSNE Lots and lots of clean lake data
@@ -54,7 +55,6 @@ library(sf)
 #Load in lagos
 lagos <- lagosne_load()
 
-
 #Grab the lake centroid info
 lake_centers <- lagos$locus
 
@@ -65,8 +65,6 @@ spatial_lakes <- st_as_sf(lake_centers,coords=c('nhd_long','nhd_lat'),
 #Grab the water quality data
 nutr <- lagos$epi_nutr
 
-#Look at column names
-#names(nutr)
 ```
 
 ### Subset columns nutr to only keep key info that we want
@@ -91,16 +89,11 @@ chla_secchi <- clarity_only %>%
   filter(!is.na(chla),
          !is.na(secchi))
 
-# How many observatiosn did we lose?
-# nrow(clarity_only) - nrow(chla_secchi)
-
-
 # Keep only the lakes with at least 200 observations of secchi and chla
 chla_secchi_200 <- chla_secchi %>%
   group_by(lagoslakeid) %>%
   mutate(count = n()) %>%
   filter(count > 200)
-
 
 ```
 
@@ -111,14 +104,12 @@ chla_secchi_200 <- chla_secchi %>%
 spatial_200 <- inner_join(spatial_lakes,chla_secchi_200 %>%
                             distinct(lagoslakeid,.keep_all=T),
                           by='lagoslakeid')
-
 ```
 
 ### Mean Chl_a map
 
 ```{r}
 ### Take the mean chl_a and secchi by lake
-
 mean_values_200 <- chla_secchi_200 %>%
   # Take summary by lake id
   group_by(lagoslakeid) %>%
@@ -142,8 +133,8 @@ mapview(mean_spatial,zcol='log10_mean_chl')
 
 # Class work
 
-## 1) What is the correlation between Secchi Disk Depth and Chlorophyll a for
-sites with at least 200 observations?
+## 1) What is the correlation between Secchi Disk Depth and Chlorophyll a
+for sites with at least 200 observations?
 
 - Here, I just want a plot of chla vs secchi for all sites 
 
@@ -172,41 +163,71 @@ ggplot(mean_values_200, aes(mean_chl, mean_secchi))+
 
 ## 2) What states have the most data? 
 
-### 2a) First you will need to make a lagos spatial dataset that has the total 
-number of counts per site.
+### 2a) First you will need to make a lagos spatial dataset 
+that has the total number of counts per site.
 
 ```{r}
-#2a. make a lagos spatial dataset that has the total number of counts per site. Presumably we are looking for states that have the most chla and secchi data..?
+# I am going to assume this means spatial data rather than nutrient data.
 
-# Start with the lagos spatial dataset
-chla_secchi_200 <- chla_secchi %>%
-  group_by(lagoslakeid) %>%
-  mutate(count = n()) %>%
+# Start with a spatial dataset from lagos centroids and state information
+# I opted for merge here over _join bc some rows were lost from locus with join regardless of whether left or inner was used.
+center_n_state <- merge(lagos$locus, lagos$state, by = 'state_zoneid', all.x = T) 
+
+#2a. 'make a lagos spatial dataset that has the total number of counts per site' 
+spatial_lakes_counts <- center_n_state %>%
+  select(lagoslakeid, state_name) %>%
+  group_by(lagoslakeid, state_name) %>%
+  summarize(per_lake_count = n()) # 942703 observations
+
+state_lakes_counts <- spatial_lakes_counts %>%
+  group_by(state_name) %>%
+  summarize(per_state_count = sum(per_lake_count))
+
+ggplot(spatial_lakes_counts, aes(as.factor(state_name))) +
+  geom_bar() +
+  xlab('State name') +
+  ylab('No. of observations') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 
 ```
 
 
-### 2b) Second, you will need to join this point dataset to the us_boundaries 
-data. 
+### 2b) Second, you will need to join this point dataset to the us_boundaries data. 
 
 ```{r}
-## Your code here
-```
-
-
-### 2c) Then you will want to group by state and sum all the observations in that
-state and arrange that data from most to least toatl observations per state. 
-
-```{r}
-## Your code here. 
-```
-
-##3 Is there a spatial pattern in Secchi disk depth for lakes with at least 200 
-observations?
-
-```{r}
-## Your code here
+states <- us_states() %>%
+  st_transform(2163)
+  
+data_n_boundaries <- st_as_sf(left_join(state_lakes_counts, states, by = 'state_name'))
 
 ```
 
 
+### 2c) Then you will want to group by state 
+and sum all the observations in that state and arrange that data from most to least total observations per state. 
+
+```{r}
+# Plot same data as above as map with state boundaries
+data_n_boundaries %>%
+  select(c(state_name, per_state_count, geometry)) %>%
+  arrange(-per_state_count) %>%
+  mapview(.,zcol = 'per_state_count')
+```
+
+## 3 Is there a spatial pattern in Secchi disk depth 
+for lakes with at least 200 observations?
+
+```{r}
+# Use the dataframe from upstream that contains sites with at least 200 observations and geometries to evaluate spatial pattern
+pal <-  mapviewPalette("mapviewSpectralColors")
+
+mean_spatial %>%
+  select(c(lagoslakeid, mean_secchi, geometry)) %>%
+  arrange(mean_secchi) %>%
+  mapview(.,zcol = 'mean_secchi', col.regions= pal,
+         cex = 'mean_secchi', legend = T)
+
+```
+
+**Response**<br/>
+**This map indicates that western states within this dataset (MN, MO, AL) may have reduced secchi depths relative to those in northeastern states(e.g.,NY, VT, NH, CT) and in northern WI.**
